@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數戰英雄：數學射擊遊戲</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #000; }
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            color: white;
+            user-select: none;
+        }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #00ff00;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+        #stats {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: 1px solid #00ffff;
+            display: none;
+        }
+        #message {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            font-weight: bold;
+            color: #ff0000;
+            display: none;
+            text-shadow: 2px 2px 10px black;
+        }
+        #instructions {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.9);
+            text-align: center;
+            pointer-events: auto;
+        }
+        #splash-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: black;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+        #splash-screen img {
+            max-width: 90%;
+            max-height: 80%;
+            border: 5px solid #00ffff;
+            border-radius: 10px;
+        }
+        #countdown {
+            position: absolute;
+            bottom: 50px;
+            font-size: 32px;
+            color: #00ffff;
+            font-weight: bold;
+        }
+        button {
+            padding: 15px 40px;
+            font-size: 24px;
+            background: #00ffff;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            margin-top: 20px;
+            transition: 0.3s;
+        }
+        button:hover { background: #00cccc; transform: scale(1.1); }
+        #wave-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 24px;
+            color: #00ffff;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer">
+    <div id="crosshair"></div>
+    <div id="stats">
+        <div>分數: <span id="score">0</span></div>
+        <div>波次: <span id="wave">1</span></div>
+    </div>
+    <div id="wave-info">剩餘機器人: <span id="bots-left">0</span></div>
+    
+    <div id="splash-screen">
+        <img src="https://docs.google.com/drawings/d/e/2PACX-1vRz_3ZjmMSyGAdApBqeXmDzoEFmLnaMV3edyPVH1uRRqWVfLLh7kIzwQI3Ji1g5pTjxLU3hRotaMjj0/pub?w=960&h=720" alt="遊戲開場圖">
+        <div id="countdown">準備中... 3</div>
+    </div>
+
+    <div id="message">錯誤答案！再試一次</div>
+    
+    <div id="instructions">
+        <h1 style="color: #00ffff; font-size: 60px; margin-bottom: 10px;">數戰英雄</h1>
+        <p style="font-size: 20px;">控制：WASD 移動，滑鼠瞄準射擊</p>
+        <p style="font-size: 20px;">任務：觀察機器人頭上的題目，射擊身體部位正確的答案！</p>
+        <button id="start-btn">進入太空港口</button>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+    let scene, camera, renderer, clock;
+    let player = { height: 1.8, speed: 0.1, turnSpeed: 0.002 };
+    let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+    let bots = [];
+    let score = 0;
+    let wave = 1;
+    let isGameRunning = false;
+
+    function init() {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050510);
+        scene.fog = new THREE.FogExp2(0x050510, 0.05);
+
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0x00ffff, 0.8);
+        directionalLight.position.set(10, 10, 10);
+        scene.add(directionalLight);
+
+        // 地面
+        const floorGeo = new THREE.PlaneGeometry(100, 100);
+        const floorMat = new THREE.MeshPhongMaterial({ color: 0x111111, side: THREE.DoubleSide });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = Math.PI / 2;
+        scene.add(floor);
+
+        // 走廊裝飾
+        for(let i = -10; i <= 2; i++) {
+            const pillarGeo = new THREE.BoxGeometry(0.5, 10, 0.5);
+            const pillarMat = new THREE.MeshPhongMaterial({ color: 0x333333 });
+            const leftPillar = new THREE.Mesh(pillarGeo, pillarMat);
+            leftPillar.position.set(-8, 5, i * 10);
+            scene.add(leftPillar);
+            const rightPillar = new THREE.Mesh(pillarGeo, pillarMat);
+            rightPillar.position.set(8, 5, i * 10);
+            scene.add(rightPillar);
+        }
+
+        camera.position.set(0, player.height, 5);
+        clock = new THREE.Clock();
+
+        window.addEventListener('resize', onWindowResize, false);
+        document.addEventListener('keydown', (e) => onKeyChange(e, true));
+        document.addEventListener('keyup', (e) => onKeyChange(e, false));
+        document.addEventListener('mousedown', shoot);
+        document.getElementById('start-btn').addEventListener('click', handleStartClick);
+
+        animate();
+    }
+
+    function handleStartClick() {
+        document.getElementById('instructions').style.display = 'none';
+        const splash = document.getElementById('splash-screen');
+        const countdownEl = document.getElementById('countdown');
+        splash.style.display = 'flex';
+        
+        let timeLeft = 3;
+        const timer = setInterval(() => {
+            timeLeft--;
+            if (timeLeft > 0) {
+                countdownEl.innerText = `準備中... ${timeLeft}`;
+            } else {
+                clearInterval(timer);
+                splash.style.display = 'none';
+                startGame();
+            }
+        }, 1000);
+    }
+
+    function startGame() {
+        document.body.requestPointerLock();
+        document.getElementById('crosshair').style.display = 'block';
+        document.getElementById('stats').style.display = 'block';
+        document.getElementById('wave-info').style.display = 'block';
+        isGameRunning = true;
+        startWave();
+    }
+
+    function startWave() {
+        document.getElementById('wave').innerText = wave;
+        let numBots = wave + 2;
+        document.getElementById('bots-left').innerText = numBots;
+        for (let i = 0; i < numBots; i++) {
+            spawnBot();
+        }
+    }
+
+    function spawnBot() {
+        const botGroup = new THREE.Group();
+        const botColor = new THREE.Color().setHSL(0.5, 1, 0.5);
+
+        // 機器人本體 (胸口)
+        const bodyGeo = new THREE.BoxGeometry(1, 1.2, 0.5);
+        const bodyMat = new THREE.MeshPhongMaterial({ color: botColor });
+        const body = new THREE.Mesh(bodyGeo, bodyMat);
+        body.userData = { type: 'chest' };
+        botGroup.add(body);
+
+        // 頭部
+        const headGeo = new THREE.BoxGeometry(0.7, 0.5, 0.4);
+        const headMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
+        const head = new THREE.Mesh(headGeo, headMat);
+        head.position.y = 0.9;
+        botGroup.add(head);
+
+        // 左腳
+        const legGeo = new THREE.BoxGeometry(0.3, 0.8, 0.3);
+        const lLeg = new THREE.Mesh(legGeo, bodyMat);
+        lLeg.position.set(-0.3, -1, 0);
+        lLeg.userData = { type: 'lleg' };
+        botGroup.add(lLeg);
+
+        // 右腳
+        const rLeg = new THREE.Mesh(legGeo, bodyMat);
+        rLeg.position.set(0.3, -1, 0);
+        rLeg.userData = { type: 'rleg' };
+        botGroup.add(rLeg);
+
+        // --- 生成數學題目 ---
+        let a, b, correctAnswer, opLabel;
+        const isSubtraction = Math.random() > 0.5;
+
+        if (isSubtraction) {
+            a = Math.floor(Math.random() * 10) + 5;
+            b = Math.floor(Math.random() * 5) + 1;
+            correctAnswer = a - b;
+            opLabel = "-";
+        } else {
+            a = Math.floor(Math.random() * 10);
+            b = Math.floor(Math.random() * 10);
+            correctAnswer = a + b;
+            opLabel = "+";
+        }
+
+        const problemString = `${a}${opLabel}${b}=?`;
+
+        // 題目畫布
+        const headCanvas = createTextCanvas(problemString, 'orange', true);
+        const headSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: headCanvas }));
+        headSprite.position.y = 1.6;
+        headSprite.scale.set(2.5, 1.2, 1);
+        botGroup.add(headSprite);
+
+        // --- 答案分配 ---
+        let wrong1 = correctAnswer + (Math.random() > 0.5 ? 1 : 2);
+        let wrong2 = Math.max(0, correctAnswer - (Math.random() > 0.5 ? 1 : 2));
+        if (wrong1 === wrong2) wrong1 += 2;
+        let answers = [correctAnswer, wrong1, wrong2].sort(() => Math.random() - 0.5);
+
+        body.add(createSprite(answers[0].toString(), 'white', 0.26, 0.5));
+        lLeg.add(createSprite(answers[1].toString(), 'white', 0.16, 0.4));
+        rLeg.add(createSprite(answers[2].toString(), 'white', 0.16, 0.4));
+
+        botGroup.position.set((Math.random() - 0.5) * 12, 1.5, -20 - (Math.random() * 30));
+        scene.add(botGroup);
+
+        bots.push({
+            mesh: botGroup,
+            answer: correctAnswer,
+            parts: { chest: answers[0], lleg: answers[1], rleg: answers[2] }
+        });
+    }
+
+    function createSprite(text, color, zPos, scale) {
+        const tex = createTextCanvas(text, color);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex }));
+        sprite.position.z = zPos;
+        sprite.scale.set(scale, scale, 1);
+        return sprite;
+    }
+
+    function createTextCanvas(text, color, isOutline = false) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 512; canvas.height = 256;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0,0,512,256);
+        if (isOutline) {
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(50, 50, 412, 156);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 5;
+            ctx.strokeRect(50, 50, 412, 156);
+        }
+        ctx.fillStyle = color;
+        ctx.font = 'bold 100px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 256, 128);
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    function onKeyChange(e, isDown) {
+        switch(e.code) {
+            case 'KeyW': moveForward = isDown; break;
+            case 'KeyS': moveBackward = isDown; break;
+            case 'KeyA': moveLeft = isDown; break;
+            case 'KeyD': moveRight = isDown; break;
+        }
+    }
+
+    document.addEventListener('mousemove', (e) => {
+        if (document.pointerLockElement === document.body) {
+            camera.rotation.y -= e.movementX * player.turnSpeed;
+        }
+    });
+
+    function shoot() {
+        if (!isGameRunning) return;
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+        if (intersects.length > 0) {
+            let hitObj = intersects[0].object;
+            let parentBotMesh = hitObj.parent;
+            while(parentBotMesh && !bots.find(b => b.mesh === parentBotMesh)) {
+                parentBotMesh = parentBotMesh.parent;
+            }
+            if (parentBotMesh) {
+                const botData = bots.find(b => b.mesh === parentBotMesh);
+                const partType = hitObj.userData.type;
+                if (partType && botData.parts[partType] === botData.answer) {
+                    scene.remove(parentBotMesh);
+                    bots = bots.filter(b => b.mesh !== parentBotMesh);
+                    score += 100;
+                    document.getElementById('score').innerText = score;
+                    document.getElementById('bots-left').innerText = bots.length;
+                    if (bots.length === 0) { wave++; setTimeout(startWave, 1000); }
+                } else if (partType) {
+                    showMessage("答錯了！請再算一次");
+                }
+            }
+        }
+    }
+
+    function showMessage(txt) {
+        const m = document.getElementById('message');
+        m.innerText = txt; m.style.display = 'block';
+        setTimeout(() => m.style.display = 'none', 1500);
+    }
+
+    function onWindowResize() {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        if (isGameRunning) {
+            if (moveForward) camera.translateZ(-player.speed);
+            if (moveBackward) camera.translateZ(player.speed);
+            if (moveLeft) camera.translateX(-player.speed);
+            if (moveRight) camera.translateX(player.speed);
+            camera.position.y = player.height;
+            bots.forEach(bot => {
+                bot.mesh.position.z += 0.02 + (wave * 0.005);
+                bot.mesh.lookAt(camera.position.x, bot.mesh.position.y, camera.position.z);
+                if (bot.mesh.position.z > camera.position.z) {
+                    bot.mesh.position.z = -40;
+                    showMessage("別讓機器人溜走了！");
+                }
+            });
+        }
+        renderer.render(scene, camera);
+    }
+
+    init();
+</script>
+</body>
+</html>
